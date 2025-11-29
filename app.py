@@ -10,7 +10,6 @@ CORS(app)
 def health_check():
     return jsonify({"status": "AI Legal Assistant Online", "version": "3.0.0"})
 
-# Endpoint Baru untuk Analisis Konten
 @app.route('/analyze-content', methods=['POST'])
 def analyze_content_route():
     if 'file' not in request.files:
