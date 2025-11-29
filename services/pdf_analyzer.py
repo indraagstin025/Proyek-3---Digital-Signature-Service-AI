@@ -1,52 +1,82 @@
 import fitz
+import google.generativeai as genai
+import json
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    raise ValueError("GOOGLE_API_KEY tidak ditemukan.")
+
+genai.configure(api_key=api_key)
+
 
 class PDFAnalyzer:
     def __init__(self):
-        self.DEFAULT_SIG_WIDTH = 120
-        self.DEFAULT_SIG_HEIGHT = 60
-        self.VERTICAL_OFFSET = 10
 
-    def find_signature_locations(self, file_stream, keywoards):
-        """
-        Mencari koordinat area tanda tangan berdasarkan kata kunci.
-        :param file_stream: File PDF (bytes)
-        :param keywords: Contoh List kata kuncinya (contoh: ['Hormat Kami', 'Disetujui Oleh'])
-        :return: List of dictionaries berisi koordinat
-        """
-        results = []
+        try:
+            self.model = genai.GenerativeModel("gemini-2.0-flash")
+        except:
+            self.model = genai.GenerativeModel("gemini-flash-latest")
+
+    def analyze_document_content(self, file_stream):
+        print(f"🔍 [AI LEGAL] Membaca & Menganalisis Dokumen (Bahasa Indonesia)...")
 
         try:
             doc = fitz.open(stream=file_stream.read(), filetype="pdf")
-            for page_num, page in enumerate(doc):
-                for keyword in keywoards:
-                    text_instances = page.search_for(keyword)
-                    for rect in text_instances:
-                        sig_x = rect.x0
-                        sig_y = rect.y0 - self.DEFAULT_SIG_HEIGHT - self.VERTICAL_OFFSET
+            full_text = ""
 
-                        if sig_y < 0:
-                            sign_y = 0
-                        found_item = {
-                            "page_number": page_num + 1,
-                            "keyword_found": keyword,
-                            "coordinates": {
-                                "x": float(sig_x),
-                                "y": float(sig_y),
-                                "width": self.DEFAULT_SIG_WIDTH,
-                                "height": self.DEFAULT_SIG_HEIGHT,
-                            },
-                            "context_text_rect": {
-                                "x": float(rect.x0),
-                                "y": float(rect.y0),
-                                "w": float(rect.width),
-                                "h": float(rect.height),
-                            },
-                        }
-                        results.append(found_item)
+            page_limit = min(5, len(doc))
+            for i in range(page_limit):
+                full_text += doc[i].get_text()
+
             doc.close()
-            return results
+
+            if len(full_text) < 50:
+                return {"error": "Dokumen terlalu pendek atau tidak terbaca."}
+
+            prompt = f"""
+            Bertindaklah sebagai Asisten Legal/Hukum AI yang ahli. Analisis teks dokumen berikut ini.
+            
+            TEKS DOKUMEN:
+            {full_text[:8000]} ... (terpotong)
+
+            TUGAS:
+            Berikan analisis terstruktur dalam format JSON saja. Gunakan Bahasa Indonesia yang formal dan profesional.
+            
+            FORMAT JSON:
+            {{
+                "summary": "Ringkasan dokumen dalam 2-3 kalimat yang padat dan jelas.",
+                "document_type": "Jenis Dokumen (Misal: Perjanjian Kerja, Surat Kuasa, Invoice, dsb)",
+                "parties": ["Nama Pihak Pertama", "Nama Pihak Kedua", ...],
+                "risk_level": "Tingkat Risiko (Pilih satu: 'Tinggi', 'Sedang', atau 'Rendah')",
+                "key_points": [
+                    "Poin penting 1 (Kewajiban/Denda/Tanggal)",
+                    "Poin penting 2",
+                    "Poin penting 3"
+                ]
+            }}
+            
+            PENTING:
+            - Output WAJIB JSON valid. Jangan gunakan markdown block.
+            - risk_level harus salah satu dari: "Tinggi", "Sedang", "Rendah".
+            - Jika dokumen berbahasa Inggris, TERJEMAHKAN analisisnya ke Bahasa Indonesia.
+            """
+
+            response = self.model.generate_content(prompt)
+
+            text_resp = response.text.replace("```json", "").replace("```", "").strip()
+
+            return json.loads(text_resp)
+
         except Exception as e:
-            print(f"Error analyzing PDF: {e}")
-            return []
+            print(f"❌ Error Analysis: {e}")
+            return {"error": f"Gagal menganalisis: {str(e)}"}
+
 
 analyzer = PDFAnalyzer()
