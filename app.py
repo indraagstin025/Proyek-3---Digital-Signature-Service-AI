@@ -8,20 +8,32 @@ CORS(app)
 
 @app.route('/', methods=['GET'])
 def health_check():
-    return jsonify({"status": "AI Legal Assistant Online", "version": "3.0.0"})
+    return jsonify({"status": "AI Legal Assistant Online", "version": "3.1.0"})
 
 @app.route('/analyze-content', methods=['POST'])
 def analyze_content_route():
+    # 1. Cek File
     if 'file' not in request.files:
-        return jsonify({"error": "No file"}), 400
+        return jsonify({"error": "No file uploaded"}), 400
     
     file = request.files['file']
     
+    # 2. [UPDATE PENTING] Ambil parameter 'document_type' dari form-data
+    # Jika tidak ada dikirim (saat upload pertama), default-nya 'General' (untuk Auto-Labeling)
+    doc_type = request.form.get('document_type', 'General')
+    
+    print(f"📥 Menerima Request Analisis. Tipe: {doc_type} | File: {file.filename}")
+
     try:
-        file.seek(0) # Reset pointer
-        result = analyzer.analyze_document_content(file)
+        file.seek(0) # Reset pointer file agar terbaca dari awal
+        
+        # 3. Kirim file + tipe dokumen ke Analyzer
+        result = analyzer.analyze_document_content(file, doc_type)
+        
         return jsonify({"status": "success", "data": result})
+        
     except Exception as e:
+        print(f"❌ Error Route: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
