@@ -1,5 +1,6 @@
 import fitz  # PyMuPDF
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 import os
 import time
@@ -13,27 +14,21 @@ if not api_key:
     print("⚠️ PERINGATAN: GOOGLE_API_KEY belum diset.")
 
 if api_key:
-    genai.configure(api_key=api_key)
+    # Client initialized later in class
+    pass
 
 class PDFAnalyzer:
     def __init__(self):
-        # [UPDATED] Menggunakan model TERBARU dari daftar akun Anda
-        # Ini jauh lebih pintar dan cepat dibanding 1.5-flash biasa
-        self.model_name = "models/gemini-2.5-flash-preview-09-2025" 
+        # [UPDATED] Menggunakan model pilihan user
+        self.model_name = "gemini-2.5-flash" 
         
-        self.safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        ]
-
+        # Inisialisasi Client
         try:
             print(f"🔌 Menghubungkan ke model: {self.model_name}...")
-            self.model = genai.GenerativeModel(self.model_name)
+            self.client = genai.Client(api_key=api_key)
         except Exception as e:
-            print(f"⚠️ Gagal inisialisasi model utama: {e}")
-            self.model = genai.GenerativeModel("gemini-pro")
+            print(f"⚠️ Gagal inisialisasi client: {e}")
+            self.client = None
 
     def _clean_text(self, text):
         """Membersihkan noise dari teks PDF"""
@@ -85,11 +80,23 @@ class PDFAnalyzer:
             # 3. Eksekusi Request
             max_retries = 3
             response = None
+            
+            # Konfigurasi Safety Settings
+            # Note: google-genai uses types.SafetySetting
+            # But defaults are usually fine. If blocked, we can add them back.
+            
             for attempt in range(max_retries):
                 try:
-                    response = self.model.generate_content(prompt, safety_settings=self.safety_settings)
+                    if not self.client:
+                        raise Exception("Client AI belum terinisialisasi.")
+                        
+                    response = self.client.models.generate_content(
+                        model=self.model_name,
+                        contents=prompt
+                    )
                     break 
                 except Exception as e:
+                    print(f"⚠️ Retrying AI request... ({attempt+1}/{max_retries}) Error: {e}")
                     time.sleep(2)
 
             if not response:
